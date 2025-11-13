@@ -3,7 +3,8 @@
 <head>
   <meta charset="UTF-8">
   <title>Web-based FRS Attendance App</title>
-  <script defer src="https://cdn.jsdelivr.net/npm/face-api.js"></script>
+  <!-- Use Vlad Mandic’s Face-API build, which includes model files -->
+  <script defer src="https://cdn.jsdelivr.net/npm/@vladmandic/face-api/dist/face-api.js"></script>
   <style>
     body { font-family: Arial, sans-serif; margin: 20px; text-align: center; }
     video, canvas { border: 1px solid #ccc; margin-top: 10px; }
@@ -13,22 +14,27 @@
 <body>
   <h1>FRS Attendance App (No AWS)</h1>
   <p>Use this app to register employees and mark attendance using your device camera. All data is stored locally in your browser.</p>
+
   <div>
     <h2>1. Register Employee</h2>
     <input id="employeeName" type="text" placeholder="Employee Name">
     <button id="registerBtn">Capture & Register Face</button>
   </div>
+
   <div>
     <h2>2. Mark Attendance</h2>
     <button id="markBtn">Capture & Mark Attendance</button>
     <p id="attendanceStatus"></p>
   </div>
+
   <video id="video" width="400" height="300" autoplay muted></video>
   <canvas id="canvas" width="400" height="300" style="display: none;"></canvas>
+
   <div id="employeeList">
     <h3>Registered Employees</h3>
     <ul id="list"></ul>
   </div>
+
 <script>
 const video = document.getElementById('video');
 const canvas = document.getElementById('canvas');
@@ -40,7 +46,7 @@ const listEl = document.getElementById('list');
 
 let faceMatcher;
 
-// Load existing employees from localStorage
+// Load employees from localStorage
 function loadEmployees() {
   const data = localStorage.getItem('employees');
   const employees = data ? JSON.parse(data) : [];
@@ -54,48 +60,43 @@ function loadEmployees() {
 }
 
 async function loadModels() {
-  await faceapi.nets.ssdMobilenetv1.loadFromUri('https://cdn.jsdelivr.net/npm/face-api.js/models');
-  await faceapi.nets.faceLandmark68Net.loadFromUri('https://cdn.jsdelivr.net/npm/face-api.js/models');
-  await faceapi.nets.faceRecognitionNet.loadFromUri('https://cdn.jsdelivr.net/npm/face-api.js/models');
+  const modelUrl = 'https://cdn.jsdelivr.net/npm/@vladmandic/face-api/model';
+  await faceapi.nets.ssdMobilenetv1.loadFromUri(modelUrl);
+  await faceapi.nets.faceLandmark68Net.loadFromUri(modelUrl);
+  await faceapi.nets.faceRecognitionNet.loadFromUri(modelUrl);
 }
 
 async function init() {
   await loadModels();
-  // Start camera
   navigator.mediaDevices.getUserMedia({ video: {} })
-    .then(stream => {
-      video.srcObject = stream;
-    })
-    .catch(err => {
-      console.error('Error accessing webcam', err);
-    });
+    .then(stream => { video.srcObject = stream; })
+    .catch(err => { console.error('Error accessing webcam', err); });
   const employees = loadEmployees();
   updateFaceMatcher(employees);
 }
 
 function updateFaceMatcher(employees) {
-  const labeled = employees.map(emp => new faceapi.LabeledFaceDescriptors(emp.label, [new Float32Array(emp.descriptor)]));
+  const labeled = employees.map(emp => new faceapi.LabeledFaceDescriptors(
+    emp.label,
+    [new Float32Array(emp.descriptor)]
+  ));
   faceMatcher = labeled.length ? new faceapi.FaceMatcher(labeled, 0.6) : null;
 }
 
 async function captureFace() {
-  const context = canvas.getContext('2d');
-  context.drawImage(video, 0, 0, canvas.width, canvas.height);
-  const detections = await faceapi.detectSingleFace(canvas).withFaceLandmarks().withFaceDescriptor();
+  const ctx = canvas.getContext('2d');
+  ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+  const detections = await faceapi.detectSingleFace(canvas)
+    .withFaceLandmarks()
+    .withFaceDescriptor();
   return detections ? detections.descriptor : null;
 }
 
 registerBtn.addEventListener('click', async () => {
   const name = employeeNameInput.value.trim();
-  if (!name) {
-    alert('Please enter a name');
-    return;
-  }
+  if (!name) { alert('Please enter a name'); return; }
   const descriptor = await captureFace();
-  if (!descriptor) {
-    alert('No face detected. Please try again.');
-    return;
-  }
+  if (!descriptor) { alert('No face detected. Please try again.'); return; }
   const employees = loadEmployees();
   employees.push({ label: name, descriptor: Array.from(descriptor) });
   localStorage.setItem('employees', JSON.stringify(employees));
@@ -123,9 +124,7 @@ markBtn.addEventListener('click', async () => {
     const attendance = JSON.parse(localStorage.getItem('attendance') || '{}');
     const now = new Date();
     const dateKey = now.toLocaleDateString();
-    if (!attendance[dateKey]) {
-      attendance[dateKey] = [];
-    }
+    if (!attendance[dateKey]) { attendance[dateKey] = []; }
     attendance[dateKey].push({ employee: bestMatch.label, time: now.toLocaleTimeString() });
     localStorage.setItem('attendance', JSON.stringify(attendance));
     attendanceStatus.textContent = `Attendance marked for ${bestMatch.label} at ${now.toLocaleTimeString()}`;
